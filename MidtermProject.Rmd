@@ -1,5 +1,145 @@
 ---
+title: "MATH 242 Midterm Project"
+author: "Jiaxing and Gage"
+date: "3/02/2024"
 output:
   pdf_document: default
-  html_document: default
+  html_document:
+    df_print: paged
 ---
+
+```{r r_packages}
+#| warning: false
+#| message: false
+library(dplyr)
+library(readr)
+library(ggplot2)
+
+```
+
+```{r load_data}
+nyc_condos <- read.csv("data/nyc-condos_s24.csv")
+```
+
+```{r EDA}
+# summary of dataset
+str(nyc_condos)
+summary(nyc_condos)
+# Check for missing values
+colSums(is.na(nyc_condos))
+
+```
+
+```{r data_wrangling}
+
+# calculate average market value for each year 
+nyc_condos <- nyc_condos %>%
+  group_by(Report.Year) %>%
+  mutate(average_market_value = mean(Full.Market.Value, na.rm = TRUE))
+
+
+# Log transform Gross SqFt
+nyc_condos$log_GrossSqFt <- log(nyc_condos$Gross.SqFt)
+# Log transform Estimated Gross Income
+nyc_condos$log_EstimatedGrossIncome <- log(nyc_condos$Estimated.Gross.Income)
+# Log transform Estimated Expense
+nyc_condos$log_EstimatedExpense <- log(nyc_condos$Estimated.Expense)
+# Log transform Net Operating Income
+nyc_condos$log_NetOperatingIncome <- log(nyc_condos$Net.Operating.Income)
+# Log transform Full Market Value
+nyc_condos$log_FullMarketValue <- log(nyc_condos$Full.Market.Value)
+
+nyc_condos$log_average_market_value <- log(nyc_condos$average_market_value)
+
+```
+
+```{r data_visualization}
+# Load required library
+library(ggplot2)
+
+# Scatter plot: Total Units vs. Average Market Value (with log transformation)
+ggplot(nyc_condos, aes(x = Total.Units, y = log_average_market_value)) +
+  geom_point() +
+  labs(x = "Log Total Units", y = "Log Average Market Value") +
+  ggtitle("Scatter Plot: Log Total Units vs. Log Average Market Value")
+
+# Scatter plot: log EstimatedGrossIncome vs. log Average Market Value
+ggplot(nyc_condos, aes(x = log_EstimatedGrossIncome, y = log_average_market_value)) +
+  geom_point() +
+  labs(x = "Log Estimated Gross Income", y = "Log Average Market Value") +
+  ggtitle("Scatter Plot: Log Estimated Gross Income vs. Log Average Market Value")
+
+# Scatter plot: log EstimatedExpense vs. log Average Market Value
+ggplot(nyc_condos, aes(x = log_EstimatedExpense, y = log_average_market_value)) +
+  geom_point() +
+  labs(x = "Log Estimated Expense", y = "Log Average Market Value") +
+  ggtitle("Scatter Plot: Log Estimated Expense vs. Log Average Market Value")
+
+# Scatter plot: log NetOperatingIncome vs. log Average Market Value
+ggplot(nyc_condos, aes(x = log_NetOperatingIncome, y = log_average_market_value)) +
+  geom_point() +
+  labs(x = "Log Net Operating Income", y = "Log Average Market Value") +
+  ggtitle("Scatter Plot: Log Net Operating Income vs. Log Average Market Value")
+
+# Scatter plot: log FullMarketValue vs. log Average Market Value
+ggplot(nyc_condos, aes(x = log_FullMarketValue, y = log_average_market_value)) +
+  geom_point() +
+  labs(x = "Log Full Market Value", y = "Log Average Market Value") +
+  ggtitle("Scatter Plot: Log Full Market Value vs. Log Average Market Value")
+
+```
+
+# **Title:**
+
+## Abstract
+
+\
+\
+\
+
+## Introduction
+
+Explanation of our variables:\
+\
+
+1.  **CondoSection**: Identification information for the condominium.
+
+2.  **Address**: Street address of the property.
+
+3.  **Neighborhood**: Name of the neighborhood where the property is located.
+
+4.  **BldgClassification**: Building classification code and description indicating the property's use.
+
+5.  **TotalUnits**: Total number of units in the building.
+
+6.  **YearBuilt**: Year the building was constructed.
+
+7.  **GrossSqFt**: Gross square footage of the building.
+
+8.  **EstGrossIncome**: Estimated gross income, calculated as income per square foot multiplied by gross square footage.
+
+9.  **GrossIncomePerSqFt**: Estimated gross income per square foot.
+
+10. **EstimatedExpense**: Estimated expense, calculated as expense per square foot multiplied by gross square footage.
+
+11. **ExpensePerSqFt**: Estimated expense per square foot.
+
+12. **NetOperatingIncome**: Net operating income, calculated as estimated gross income minus estimated expense.
+
+13. **FullMarketValue**: Current year's total market value of the property (land and building).
+
+14. **MarketValuePerSqFt**: Market value per square foot, calculated as full market value divided by gross square footage.
+
+15. **ReportYear**: Year of the report.
+
+16. **Boro-Block-Lot**: Borough-Block-Lot location identifier for the property.
+
+## Methods
+
+## Results
+
+## Discussion
+
+## Conclusion
+
+## References
