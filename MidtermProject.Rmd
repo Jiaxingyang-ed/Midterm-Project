@@ -8,86 +8,133 @@ output:
     df_print: paged
 ---
 
+```{r}
+# install.packages("leaps")
+# install.packages("glmnet")
+```
+
 ```{r r_packages}
 #| warning: false
 #| message: false
 library(dplyr)
 library(readr)
 library(ggplot2)
-
+library(glmnet)
+library(boot)
+library(leaps)
 ```
 
 ```{r load_data}
-nyc_condos <- read.csv("data/nyc-condos_s24.csv")
+nyc_condos <- read.csv("data/nyc-condos_s24.csv") 
+nyc_condos_full <- read.csv("data/full_data.csv")
+```
+
+```{r split_data}
+# Set the seed 
+set.seed(123)
+# Create an index to randomly sample 70% of the data for training
+train_index <- sample(1:nrow(nyc_condos_full), 0.7 * nrow(nyc_condos_full))
+# Create the training set
+train_data <- nyc_condos_full[train_index, ]
+# Create the testing set
+test_data <- nyc_condos_full[-train_index, ]
 ```
 
 ```{r EDA}
+#| warning: false
+#| message: false
 # summary of dataset
 str(nyc_condos)
-summary(nyc_condos)
-# Check for missing values
-colSums(is.na(nyc_condos))
-
 ```
 
-```{r data_wrangling}
+```{r variable_transformation}
 
-# calculate average market value for each year 
-nyc_condos <- nyc_condos %>%
-  group_by(Report.Year) %>%
-  mutate(average_market_value = mean(Full.Market.Value, na.rm = TRUE))
-
-
-# Log transform Gross SqFt
-nyc_condos$log_GrossSqFt <- log(nyc_condos$Gross.SqFt)
-# Log transform Estimated Gross Income
-nyc_condos$log_EstimatedGrossIncome <- log(nyc_condos$Estimated.Gross.Income)
-# Log transform Estimated Expense
-nyc_condos$log_EstimatedExpense <- log(nyc_condos$Estimated.Expense)
+# # calculate average market value for each year
+# nyc_condos <- nyc_condos %>%
+#   group_by(Report.Year) %>%
+#   mutate(average_market_value = mean(Full.Market.Value, na.rm = TRUE))
+# 
+# 
+# # Log transform Gross SqFt
+# nyc_condos$log_GrossSqFt <- log(nyc_condos$Gross.SqFt)
+# # Log transform Estimated Gross Income
+# nyc_condos$log_EstimatedGrossIncome <- log(nyc_condos$Estimated.Gross.Income)
+# # Log transform Estimated Expense
+# nyc_condos$log_EstimatedExpense <- log(nyc_condos$Estimated.Expense)
 # Log transform Net Operating Income
 nyc_condos$log_NetOperatingIncome <- log(nyc_condos$Net.Operating.Income)
+nyc_condos_full$log_NetOperatingIncome <- log(nyc_condos_full$Net.Operating.Income)
+train_data$log_NetOperatingIncome <- log(train_data$Net.Operating.Income)
+test_data$log_NetOperatingIncome <- log(test_data$Net.Operating.Income)
+
+
+
+
 # Log transform Full Market Value
-nyc_condos$log_FullMarketValue <- log(nyc_condos$Full.Market.Value)
+# nyc_condos$log_FullMarketValue <- log(nyc_condos$Full.Market.Value)
+# 
+# nyc_condos$log_average_market_value <- log(nyc_condos$average_market_value)
 
-nyc_condos$log_average_market_value <- log(nyc_condos$average_market_value)
+```
+
+```{r Variables_Selection}
+#| warning: false
+#| message: false
+set.seed(250)
+## model.matrix() creates our design matrix of predictors
+x <- model.matrix(Full.Market.Value  ~ Year.Built + Total.Units + Estimated.Gross.Income + Gross.Income.per.SqFt + Estimated.Expense + Expense.per.SqFt + log_NetOperatingIncome + Gross.SqFt, nyc_condos)[,-1]
+## select our outcome and convert it into a vector
+## instead of a dataframe
+y <- nyc_condos %>% select(Full.Market.Value) %>% unlist() %>% as.numeric()
+## fit lasso for a range of lambda values (lambda is the tuning parameter
+## that controls shrinkage)
+cv.out <- cv.glmnet(x, y, alpha = 1)
+## pick out the optimal lambda
+bestlam <- cv.out$lambda.min
+## get coefficients from the Lasso model
+lasso <- as.matrix(coef(cv.out, s = bestlam))
+t(lasso)
+```
+
+```{r MLR}
+
+lm <- lm(Full.Market.Value ~ Year.Built + Total.Units + Gross.SqFt+ Gross.Income.per.SqFt + Expense.per.SqFt + log_NetOperatingIncome, data = train_data)
+summary(lm)
+
 
 ```
 
-```{r data_visualization}
-# Load required library
-library(ggplot2)
+### Our Model is:
 
-# Scatter plot: Total Units vs. Average Market Value (with log transformation)
-ggplot(nyc_condos, aes(x = Total.Units, y = log_average_market_value)) +
-  geom_point() +
-  labs(x = "Log Total Units", y = "Log Average Market Value") +
-  ggtitle("Scatter Plot: Log Total Units vs. Log Average Market Value")
+$$
+\[
+\text{Market Value} = -103900000 + 8193 \times \text{Year.Built} - 4845 \times \text{Total.Units} + 107.4 \times \text{Gross.SqFt} + 553200 \times \text{Gross.Income.per.SqFt} - 515800 \times \text{Expense.per.SqFt} + 6079000 \times \log(\text{Net.Operating.Income}) + \epsilon
+\]
 
-# Scatter plot: log EstimatedGrossIncome vs. log Average Market Value
-ggplot(nyc_condos, aes(x = log_EstimatedGrossIncome, y = log_average_market_value)) +
-  geom_point() +
-  labs(x = "Log Estimated Gross Income", y = "Log Average Market Value") +
-  ggtitle("Scatter Plot: Log Estimated Gross Income vs. Log Average Market Value")
+$$
 
-# Scatter plot: log EstimatedExpense vs. log Average Market Value
-ggplot(nyc_condos, aes(x = log_EstimatedExpense, y = log_average_market_value)) +
-  geom_point() +
-  labs(x = "Log Estimated Expense", y = "Log Average Market Value") +
-  ggtitle("Scatter Plot: Log Estimated Expense vs. Log Average Market Value")
+```{r K_FoldValidation}
 
-# Scatter plot: log NetOperatingIncome vs. log Average Market Value
-ggplot(nyc_condos, aes(x = log_NetOperatingIncome, y = log_average_market_value)) +
-  geom_point() +
-  labs(x = "Log Net Operating Income", y = "Log Average Market Value") +
-  ggtitle("Scatter Plot: Log Net Operating Income vs. Log Average Market Value")
+mse.lm.i <- function(i) {
+  # Split the test data into k folds
+  folds <- split(test_data, 1:nrow(test_data) %% 10)
+  
+  # Get the test data for the current fold
+  fold_test_data <- folds[[i]]
+  
+  # Predict on the test data for the current fold
+  yhat_test <- predict(lm, newdata = fold_test_data)
+  
+  # Compute the MSE for the current fold
+  mse_fold <- mean((fold_test_data$Full.Market.Value - yhat_test)^2)
+  
+  return(mse_fold)
+}
 
-# Scatter plot: log FullMarketValue vs. log Average Market Value
-ggplot(nyc_condos, aes(x = log_FullMarketValue, y = log_average_market_value)) +
-  geom_point() +
-  labs(x = "Log Full Market Value", y = "Log Average Market Value") +
-  ggtitle("Scatter Plot: Log Full Market Value vs. Log Average Market Value")
+mse.lm.i(10)
 
 ```
+
 
 # **Title:**
 
