@@ -21,6 +21,7 @@ library(readr)
 library(ggplot2)
 library(glmnet)
 library(boot)
+library(gridExtra)
 library(leaps)
 ```
 
@@ -68,6 +69,18 @@ train_data$log_NetOperatingIncome <- log(train_data$Net.Operating.Income)
 test_data$log_NetOperatingIncome <- log(test_data$Net.Operating.Income)
 
 
+nyc_condos$log_Full.Market.Value <- log(nyc_condos$Full.Market.Value)
+nyc_condos_full$log_Full.Market.Value <- log(nyc_condos_full$Full.Market.Value)
+train_data$log_Full.Market.Value <- log(train_data$Full.Market.Value)
+test_data$log_Full.Market.Value <- log(test_data$Full.Market.Value)
+
+
+
+nyc_condos$Net.Operating.Income.per.SqFt <- nyc_condos$Net.Operating.Income/ nyc_condos$Gross.SqFt 
+nyc_condos_full$Net.Operating.Income.per.SqFt <- nyc_condos_full$Net.Operating.Income/ nyc_condos_full$Gross.SqFt 
+train_data$Net.Operating.Income.per.SqFt <- train_data$Net.Operating.Income/ train_data$Gross.SqFt 
+test_data$Net.Operating.Income.per.SqFt <- test_data$Net.Operating.Income/ test_data$Gross.SqFt 
+
 
 
 # Log transform Full Market Value
@@ -98,17 +111,18 @@ t(lasso)
 
 ```{r MLR}
 
-lm <- lm(Full.Market.Value ~ Year.Built + Total.Units + Gross.SqFt+ Gross.Income.per.SqFt + Expense.per.SqFt + log_NetOperatingIncome, data = train_data)
+# lm <- lm(Full.Market.Value ~ Year.Built + Gross.SqFt+ Gross.Income.per.SqFt + Expense.per.SqFt + log_NetOperatingIncome, data = train_data)
+# summary(lm)
+
+lm <- lm(log_Full.Market.Value ~ Year.Built + Gross.SqFt+ Gross.Income.per.SqFt + Expense.per.SqFt + Net.Operating.Income.per.SqFt, data = train_data)
 summary(lm)
-
-
 ```
 
 ### Our Model is:
 
 $$
 \[
-\text{Market Value} = -103900000 + 8193 \times \text{Year.Built} - 4845 \times \text{Total.Units} + 107.4 \times \text{Gross.SqFt} + 553200 \times \text{Gross.Income.per.SqFt} - 515800 \times \text{Expense.per.SqFt} + 6079000 \times \log(\text{Net.Operating.Income}) + \epsilon
+\text{Market Value} = -103900000 + 8193 \times \text{Year.Built} - 4845 \times \text{Total.Units} + 107.4 \times \text{Gross.SqFt} + 553200 \times \text{Gross.Income.per.SqFt} - 515800 \times \text{Expense.per.SqFt} +  6079000 \times \log(\text{Net.Operating.Income}) + \epsilon
 \]
 
 $$
@@ -131,10 +145,74 @@ mse.lm.i <- function(i) {
   return(mse_fold)
 }
 
-mse.lm.i(10)
+mse.lm.i(5)
 
 ```
 
+
+
+```{r UnusualPoint}
+
+
+Lev <- data.frame(hatvalues(lm)) %>%
+ggplot(aes(x = 1:length(hatvalues(lm)), hatvalues(lm))) +
+geom_point() +
+labs(title = "Leverage",
+x = "x", y = "Leverage")
+
+
+stdresid <- data.frame(rstandard(lm)) %>%
+ggplot(aes(x = 1:length(rstandard(lm)), rstandard(lm))) +
+geom_point() +
+labs(title = "Standardized Residuals",
+x = "x", y = "Standardized Residuals")
+
+
+
+studresid <- data.frame(rstudent(lm)) %>%
+ggplot(aes(x = 1:length(rstudent(lm)), rstudent(lm))) +
+geom_point() +
+labs(title = "Studentized Residuals",
+x = "x", y = "Studentized Residuals")
+
+cooks <- data.frame(cooks.distance(lm)) %>%
+ggplot(aes(x = 1:length(cooks.distance(lm)), cooks.distance(lm))) +
+geom_point() +
+labs(title = "Cooks Distance",
+x = "x", y = "Cooks Distance")
+
+
+
+p <- length(lm$coeff)
+# n <- nrow(train_data)
+n <- 22102
+
+Lev <- Lev +
+geom_hline(yintercept = 2*p/n, lty = "dashed", col = "orange")
+
+stdresid <- stdresid +
+geom_hline(yintercept = 2, lty = "dashed", col = "orange")
+
+studresid <- studresid +
+geom_hline(yintercept = 3, lty = "dashed", col = "orange")
+
+cooks <- cooks +
+geom_hline(yintercept = 1, lty = "dashed", col = "orange") +
+labs(title = "Case 1",
+x = "x", y = "Cooks Distance")
+
+grid.arrange(Lev, stdresid, studresid, cooks, ncol = 2)
+
+
+# high_leverage <- train_data %>% filter(hatvalues(lm) > 2* p/n)
+# high_residuals <- train_data %>% filter(abs(rstandard(lm)) > 2)
+# high_influence <- train_data %>% filter(cooks.distance(lm) > 1)
+# 
+# 
+# print(high_leverage)
+# print(high_residuals)
+# print(high_influence)
+```
 
 # **Title:**
 
