@@ -204,14 +204,14 @@ x = "x", y = "Cooks Distance")
 grid.arrange(Lev, stdresid, studresid, cooks, ncol = 2)
 
 
-# high_leverage <- train_data %>% filter(hatvalues(lm) > 2* p/n)
+[# high_leverage <- train_data %>% filter(hatvalues(lm) > 2* p/n)
 # high_residuals <- train_data %>% filter(abs(rstandard(lm)) > 2)
 # high_influence <- train_data %>% filter(cooks.distance(lm) > 1)
 # 
 # 
 # print(high_leverage)
 # print(high_residuals)
-# print(high_influence)
+# print(high_influence)]
 ```
 
 # **Title:**
