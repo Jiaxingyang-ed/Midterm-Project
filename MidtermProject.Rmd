@@ -11,6 +11,9 @@ output:
 ```{r}
 # install.packages("leaps")
 # install.packages("glmnet")
+# install.packages("DAAG")
+# install.packages("neuralnet")
+# install.packages("glmnet")
 ```
 
 ```{r r_packages}
@@ -19,15 +22,19 @@ output:
 library(dplyr)
 library(readr)
 library(ggplot2)
+library(neuralnet)
 library(glmnet)
 library(boot)
 library(gridExtra)
+library(DAAG)
 library(leaps)
 ```
 
 ```{r load_data}
 nyc_condos <- read.csv("data/nyc-condos_s24.csv") 
 nyc_condos_full <- read.csv("data/full_data.csv")
+nyc_condos_full <- na.omit(nyc_condos_full)
+
 ```
 
 ```{r split_data}
@@ -39,6 +46,8 @@ train_index <- sample(1:nrow(nyc_condos_full), 0.7 * nrow(nyc_condos_full))
 train_data <- nyc_condos_full[train_index, ]
 # Create the testing set
 test_data <- nyc_condos_full[-train_index, ]
+
+
 ```
 
 ```{r EDA}
@@ -49,7 +58,9 @@ str(nyc_condos)
 ```
 
 ```{r variable_transformation}
-
+#| warning: false
+#| message: false
+#| include: false
 # # calculate average market value for each year
 # nyc_condos <- nyc_condos %>%
 #   group_by(Report.Year) %>%
@@ -80,25 +91,44 @@ nyc_condos$Net.Operating.Income.per.SqFt <- nyc_condos$Net.Operating.Income/ nyc
 nyc_condos_full$Net.Operating.Income.per.SqFt <- nyc_condos_full$Net.Operating.Income/ nyc_condos_full$Gross.SqFt 
 train_data$Net.Operating.Income.per.SqFt <- train_data$Net.Operating.Income/ train_data$Gross.SqFt 
 test_data$Net.Operating.Income.per.SqFt <- test_data$Net.Operating.Income/ test_data$Gross.SqFt 
-
+# "Net Operating Income per SqFt" may better represent the profitability of a property relative to its size, which could be a more relevant predictor of market value.
 
 
 # Log transform Full Market Value
 # nyc_condos$log_FullMarketValue <- log(nyc_condos$Full.Market.Value)
 # 
+
+nyc_condos$UPPER_WEST_SIDE <- ifelse(nyc_condos$Neighborhood == "UPPER WEST SIDE (79-96)", 1, 0)
+nyc_condos$UPPER_EAST_SIDE <- ifelse(nyc_condos$Neighborhood == "UPPER EAST SIDE (59-79)", 1, 0)
+
+
+table(nyc_condos$UPPER_WEST_SIDE)
+table(nyc_condos$UPPER_EAST_SIDE)
+
+
+
+min_Gross_SqFt <- min(train_data$Gross.SqFt)
+max_Gross_SqFt <- max(train_data$Gross.SqFt)
+
+train_data$Gross.SqFt_scaled <- (train_data$Gross.SqFt - min_Gross_SqFt) / (max_Gross_SqFt - min_Gross_SqFt)
+
+test_data$Gross.SqFt_scaled <- (test_data$Gross.SqFt - min_Gross_SqFt) / (max_Gross_SqFt - min_Gross_SqFt)
+
+
+
 # nyc_condos$log_average_market_value <- log(nyc_condos$average_market_value)
 
 ```
 
-```{r Variables_Selection}
+```{r Lasso}
 #| warning: false
 #| message: false
 set.seed(250)
 ## model.matrix() creates our design matrix of predictors
-x <- model.matrix(Full.Market.Value  ~ Year.Built + Total.Units + Estimated.Gross.Income + Gross.Income.per.SqFt + Estimated.Expense + Expense.per.SqFt + log_NetOperatingIncome + Gross.SqFt, nyc_condos)[,-1]
+x <- model.matrix(log_Full.Market.Value  ~  Total.Units + Estimated.Gross.Income + Gross.Income.per.SqFt + Estimated.Expense + Expense.per.SqFt + Net.Operating.Income.per.SqFt + Gross.SqFt, train_data)[,-1]
 ## select our outcome and convert it into a vector
 ## instead of a dataframe
-y <- nyc_condos %>% select(Full.Market.Value) %>% unlist() %>% as.numeric()
+y <- train_data %>% select(Full.Market.Value) %>% unlist() %>% as.numeric()
 ## fit lasso for a range of lambda values (lambda is the tuning parameter
 ## that controls shrinkage)
 cv.out <- cv.glmnet(x, y, alpha = 1)
@@ -109,47 +139,54 @@ lasso <- as.matrix(coef(cv.out, s = bestlam))
 t(lasso)
 ```
 
+```{r CrossValidation}
+#| warning: false
+#| message: false
+#| include: false
+set.seed(2250)
+x_train <- model.matrix(log_Full.Market.Value  ~  Total.Units + Estimated.Gross.Income + Gross.Income.per.SqFt + Estimated.Expense + Expense.per.SqFt + Net.Operating.Income.per.SqFt + Gross.SqFt, train_data)[,-1]
+
+
+y_train <- train_data$log_Full.Market.Value
+
+cv.out <- cv.glmnet(x_train, y_train, alpha = 1)
+bestlam <- cv.out$lambda.min
+lasso <- coef(cv.out, s = bestlam)
+x_test <- model.matrix(log_Full.Market.Value  ~  Total.Units + Estimated.Gross.Income + Gross.Income.per.SqFt + Estimated.Expense + Expense.per.SqFt + Net.Operating.Income.per.SqFt + Gross.SqFt, train_data)[,-1]
+predictions <- predict(cv.out, newx = x_test, s = bestlam)
+
+mse <- mean((test_data$log_Full.Market.Value - predictions)^2)
+mse
+
+```
+
 ```{r MLR}
+#| warning: false
+#| message: false
+
 
 # lm <- lm(Full.Market.Value ~ Year.Built + Gross.SqFt+ Gross.Income.per.SqFt + Expense.per.SqFt + log_NetOperatingIncome, data = train_data)
 # summary(lm)
 
-lm <- lm(log_Full.Market.Value ~ Year.Built + Gross.SqFt+ Gross.Income.per.SqFt + Expense.per.SqFt + Net.Operating.Income.per.SqFt, data = train_data)
+lm <- lm(log_Full.Market.Value ~  Gross.SqFt_scaled + Net.Operating.Income.per.SqFt , data = train_data)
 summary(lm)
 ```
 
-### Our Model is:
+```{r MLR_Validation}
 
-$$
-\[
-\text{Market Value} = -103900000 + 8193 \times \text{Year.Built} - 4845 \times \text{Total.Units} + 107.4 \times \text{Gross.SqFt} + 553200 \times \text{Gross.Income.per.SqFt} - 515800 \times \text{Expense.per.SqFt} +  6079000 \times \log(\text{Net.Operating.Income}) + \epsilon
-\]
 
-$$
+predicted_values <- predict(lm, newdata = test_data)
 
-```{r K_FoldValidation}
+squared_errors <- (predicted_values - test_data$log_Full.Market.Value)^2
 
-mse.lm.i <- function(i) {
-  # Split the test data into k folds
-  folds <- split(test_data, 1:nrow(test_data) %% 10)
-  
-  # Get the test data for the current fold
-  fold_test_data <- folds[[i]]
-  
-  # Predict on the test data for the current fold
-  yhat_test <- predict(lm, newdata = fold_test_data)
-  
-  # Compute the MSE for the current fold
-  mse_fold <- mean((fold_test_data$Full.Market.Value - yhat_test)^2)
-  
-  return(mse_fold)
-}
+MSE <- mean(squared_errors)
 
-mse.lm.i(5)
+MSE
+
 
 ```
 
-
+### Our Model is:
 
 ```{r UnusualPoint}
 
@@ -204,7 +241,7 @@ x = "x", y = "Cooks Distance")
 grid.arrange(Lev, stdresid, studresid, cooks, ncol = 2)
 
 
-[# high_leverage <- train_data %>% filter(hatvalues(lm) > 2* p/n)
+# high_leverage <- train_data %>% filter(hatvalues(lm) > 2* p/n)
 # high_residuals <- train_data %>% filter(abs(rstandard(lm)) > 2)
 # high_influence <- train_data %>% filter(cooks.distance(lm) > 1)
 # 
